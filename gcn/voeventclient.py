@@ -80,6 +80,7 @@ def _open_socket(host, port, iamalive_timeout, max_reconnect_timeout, log):
             log.exception(
                 'could not connect to %s:%d, will retry in %d seconds',
                 host, port, reconnect_timeout)
+            raise
             time.sleep(reconnect_timeout)
         else:
             return sock
