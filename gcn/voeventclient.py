@@ -25,6 +25,7 @@ import logging
 import socket
 import struct
 import time
+import itertools
 
 try:
     from time import monotonic
@@ -55,6 +56,7 @@ def _open_socket(host, port, iamalive_timeout, max_reconnect_timeout, log):
     Double the timeout after each failed attempt thereafter, until the
     timeout reaches MAX_RECONNECT_TIMEOUT. Return the new, connected socket."""
     reconnect_timeout = 1
+
     while True:
         try:
             # Open socket
@@ -192,7 +194,29 @@ def _ingest_packet(sock, ivorn, handler, log):
                       root.tag)
 
 
-def listen(host="68.169.57.253", port=8099,
+def _validate_host_port(host, port):
+    """
+    Check if the host and port values are consistent with each other,
+    to be used as pairs.
+    `host` can be a string or a list of strings
+    `port` can be an integer or a list of the same length as host
+    """
+
+    if isinstance(host, str):
+        host = [host]
+
+    if not isinstance(port, list):
+        port = [port for thishost in host]
+
+    if not len(host) == len(port):
+        log.exception("Host list and port list are of unequal lengths")
+        raise ValueError
+
+    return host, port
+
+
+def listen(host=["209.208.78.170", "45.58.43.186", "50.116.49.68",
+           "68.169.57.253"], port=8099,
            ivorn="ivo://python_voeventclient/anonymous", iamalive_timeout=150,
            max_reconnect_timeout=1024, handler=None, log=None):
     """Connect to a VOEvent Transport Protocol server on the given `host` and
@@ -216,11 +240,22 @@ def listen(host="68.169.57.253", port=8099,
     logger will be used.
 
     Note that this function does not return."""
+
     if log is None:
         log = logging.getLogger('gcn.listen')
 
-    while True:
-        sock = _open_socket(host, port, iamalive_timeout,
+    host, port = _validate_host_port(host, port)
+    hostcount = 0
+    num_hosts = len(host)
+
+    # while True:
+    #     this_port = port[hostcount]
+    #     this_host = host[hostcount]
+    # Use `for this_host, this_port in itertools.cycle(zip(host, port)):`
+
+    for this_host, this_port in itertools.cycle(zip(host, port)):
+        print(this_host, this_port)
+        sock = _open_socket(this_host, this_port, iamalive_timeout,
                             max_reconnect_timeout, log)
 
         try:
@@ -233,17 +268,21 @@ def listen(host="68.169.57.253", port=8099,
         except XMLSyntaxError:
             log.warn("XML syntax error")
         finally:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except socket.error:
-                log.exception("could not shut down socket")
+            _close_socket(sock, log)
 
-            try:
-                sock.close()
-            except socket.error:
-                log.exception("could not close socket")
-            else:
-                log.info("closed socket")
+
+def _close_socket(sock, log):
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except socket.error:
+        log.exception("could not shut down socket")
+
+    try:
+        sock.close()
+    except socket.error:
+        log.exception("could not close socket")
+    else:
+        log.info("closed socket")
 
 
 def serve(payloads, host='127.0.0.1', port=8099, retransmit_timeout=0,
